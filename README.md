@@ -2,69 +2,69 @@
 
 # Claude Code Action
 
-A general-purpose [Claude Code](https://claude.ai/code) action for GitHub PRs and issues that can answer questions and implement code changes. This action intelligently detects when to activate based on your workflow context—whether responding to @claude mentions, issue assignments, or executing automation tasks with explicit prompts. It supports multiple authentication methods including Anthropic direct API, Amazon Bedrock, and Google Vertex AI.
+*Fáilte!* Welcome to the friendliest [Claude Code](https://claude.ai/code) action this side of the Atlantic! This grand little action for GitHub PRs and issues is as handy as a pocket on a shirt - answering your questions and implementing code changes like nobody's business. Sure, it's clever enough to know when to jump in based on your workflow context—whether you're giving it a shout with @claude mentions, assigning issues, or running automation tasks with explicit prompts. And wouldn't you know it, it works with multiple authentication methods including Anthropic direct API, Amazon Bedrock, and Google Vertex AI. *Go raibh maith agat* for choosing this action!
 
-## Features
+## What Makes This Action Pure Class
 
-- 🎯 **Intelligent Mode Detection**: Automatically selects the appropriate execution mode based on your workflow context—no configuration needed
-- 🤖 **Interactive Code Assistant**: Claude can answer questions about code, architecture, and programming
-- 🔍 **Code Review**: Analyzes PR changes and suggests improvements
-- ✨ **Code Implementation**: Can implement simple fixes, refactoring, and even new features
-- 💬 **PR/Issue Integration**: Works seamlessly with GitHub comments and PR reviews
-- 🛠️ **Flexible Tool Access**: Access to GitHub APIs and file operations (additional tools can be enabled via configuration)
-- 📋 **Progress Tracking**: Visual progress indicators with checkboxes that dynamically update as Claude completes tasks
-- 🏃 **Runs on Your Infrastructure**: The action executes entirely on your own GitHub runner (Anthropic API calls go to your chosen provider)
-- ⚙️ **Simplified Configuration**: Unified `prompt` and `claude_args` inputs provide clean, powerful configuration aligned with Claude Code SDK
+- 🎯 **Smart as a Whip**: Automatically picks the right execution mode based on your workflow context—no faffing about with configuration needed, *fair play*!
+- 🤖 **Your Grand Code Companion**: Claude's a dab hand at answering questions about code, architecture, and programming - like having a wise old uncle who knows his stuff
+- 🔍 **Eagle-Eyed Code Review**: Takes a gander at your PR changes and suggests improvements that'd make your mammy proud
+- ✨ **Code Implementation Wizard**: Can implement simple fixes, refactoring, and even new features faster than you can say "sláinte"
+- 💬 **Smooth as Butter Integration**: Works like a dream with GitHub comments and PR reviews
+- 🛠️ **Handy Tool Access**: Gets at GitHub APIs and file operations (sure, you can enable more tools if you fancy)
+- 📋 **Keeps You in the Loop**: Visual progress indicators with checkboxes that update as Claude gets the job done
+- 🏃 **Runs on Your Own Turf**: The action runs entirely on your own GitHub runner (Anthropic API calls go where you tell them to)
+- ⚙️ **Dead Simple Setup**: Unified `prompt` and `claude_args` inputs make configuration as easy as Sunday morning
 
-## 📦 Upgrading from v0.x?
+## 📦 Moving Up from v0.x, Are Ya?
 
-**See our [Migration Guide](./docs/migration-guide.md)** for step-by-step instructions on updating your workflows to v1.0. The new version simplifies configuration while maintaining compatibility with most existing setups.
+**Have a look at our [Migration Guide](./docs/migration-guide.md)** for step-by-step instructions on updating your workflows to v1.0. The new version makes configuration a doddle while keeping things working with most existing setups - *Bob's your uncle!*
 
-## Quickstart
+## Getting Started (It's Grand, Really!)
 
-The easiest way to set up this action is through [Claude Code](https://claude.ai/code) in the terminal. Just open `claude` and run `/install-github-app`.
+The handiest way to set up this action is through [Claude Code](https://claude.ai/code) in the terminal. Just fire up `claude` and run `/install-github-app`.
 
-This command will guide you through setting up the GitHub app and required secrets.
+This command will walk you through setting up the GitHub app and required secrets - sure it's as easy as boiling water!
 
-**Note**:
+**Mind yourself now**:
 
-- You must be a repository admin to install the GitHub app and add secrets
-- This quickstart method is only available for direct Anthropic API users. For AWS Bedrock or Google Vertex AI setup, see [docs/cloud-providers.md](./docs/cloud-providers.md).
+- You'll need to be a repository admin to install the GitHub app and add secrets (*no getting around that one*)
+- This quickstart method is only for direct Anthropic API users. If you're using AWS Bedrock or Google Vertex AI, pop over to [docs/cloud-providers.md](./docs/cloud-providers.md) - they'll sort you right out.
 
-## 📚 Solutions & Use Cases
+## 📚 Brilliant Solutions & Ways to Use This Craic
 
-Looking for specific automation patterns? Check our **[Solutions Guide](./docs/solutions.md)** for complete working examples including:
+Looking for specific automation patterns, are ya? Check our **[Solutions Guide](./docs/solutions.md)** - it's packed with complete working examples that'll have you sorted:
 
-- **🔍 Automatic PR Code Review** - Full review automation
-- **📂 Path-Specific Reviews** - Trigger on critical file changes
-- **👥 External Contributor Reviews** - Special handling for new contributors
-- **📝 Custom Review Checklists** - Enforce team standards
-- **🔄 Scheduled Maintenance** - Automated repository health checks
-- **🏷️ Issue Triage & Labeling** - Automatic categorization
-- **📖 Documentation Sync** - Keep docs updated with code changes
-- **🔒 Security-Focused Reviews** - OWASP-aligned security analysis
+- **🔍 Automatic PR Code Review** - Full review automation that's the bee's knees
+- **📂 Path-Specific Reviews** - Triggers when critical files change (sharp as a tack!)
+- **👥 External Contributor Reviews** - Special handling for new contributors (*céad míle fáilte* to them!)
+- **📝 Custom Review Checklists** - Keep your team standards tight as a drum
+- **🔄 Scheduled Maintenance** - Automated repository health checks that never sleep
+- **🏷️ Issue Triage & Labeling** - Automatic categorization faster than you can say "Tánaiste"
+- **📖 Documentation Sync** - Keeps docs updated with code changes like clockwork
+- **🔒 Security-Focused Reviews** - OWASP-aligned security analysis that's sound as a pound
 - **📊 DIY Progress Tracking** - Create tracking comments in automation mode
 
-Each solution includes complete working examples, configuration details, and expected outcomes.
+Each solution comes with the full shebang - working examples, configuration details, and what you can expect. *Níl aon tinteán mar do thinteán féin* (there's no place like home), and these solutions will make your repository feel just like that!
 
-## Documentation
+## The Full Library (Everything You Need to Know!)
 
-- **[Solutions Guide](./docs/solutions.md)** - **🎯 Ready-to-use automation patterns**
-- **[Migration Guide](./docs/migration-guide.md)** - **⭐ Upgrading from v0.x to v1.0**
-- [Setup Guide](./docs/setup.md) - Manual setup, custom GitHub apps, and security best practices
-- [Usage Guide](./docs/usage.md) - Basic usage, workflow configuration, and input parameters
-- [Custom Automations](./docs/custom-automations.md) - Examples of automated workflows and custom prompts
-- [Configuration](./docs/configuration.md) - MCP servers, permissions, environment variables, and advanced settings
-- [Experimental Features](./docs/experimental.md) - Execution modes and network restrictions
-- [Cloud Providers](./docs/cloud-providers.md) - AWS Bedrock and Google Vertex AI setup
-- [Capabilities & Limitations](./docs/capabilities-and-limitations.md) - What Claude can and cannot do
-- [Security](./docs/security.md) - Access control, permissions, and commit signing
-- [FAQ](./docs/faq.md) - Common questions and troubleshooting
+- **[Solutions Guide](./docs/solutions.md)** - **🎯 Ready-to-use automation patterns that'll knock your socks off**
+- **[Migration Guide](./docs/migration-guide.md)** - **⭐ Moving from v0.x to v1.0 without breaking a sweat**
+- [Setup Guide](./docs/setup.md) - Manual setup, custom GitHub apps, and security best practices (*sure, we've got you covered*)
+- [Usage Guide](./docs/usage.md) - Basic usage, workflow configuration, and input parameters - the bread and butter stuff
+- [Custom Automations](./docs/custom-automations.md) - Examples of automated workflows and custom prompts that'll make your life easier
+- [Configuration](./docs/configuration.md) - MCP servers, permissions, environment variables, and all the fancy advanced settings
+- [Experimental Features](./docs/experimental.md) - Execution modes and network restrictions for the adventurous types
+- [Cloud Providers](./docs/cloud-providers.md) - AWS Bedrock and Google Vertex AI setup (*for those who like their clouds with a bit of style*)
+- [Capabilities & Limitations](./docs/capabilities-and-limitations.md) - What Claude can and cannot do (we're keeping it real here)
+- [Security](./docs/security.md) - Access control, permissions, and commit signing (*safe as houses*)
+- [FAQ](./docs/faq.md) - Common questions and troubleshooting for when things go a bit sideways
 
-## 📚 FAQ
+## 📚 Questions? We've Got Answers!
 
-Having issues or questions? Check out our [Frequently Asked Questions](./docs/faq.md) for solutions to common problems and detailed explanations of Claude's capabilities and limitations.
+Having a bit of trouble or just curious about something? Take a gander at our [Frequently Asked Questions](./docs/faq.md) for solutions to common problems and detailed explanations of Claude's capabilities and limitations. Sure, we've probably answered it already - *great minds think alike!*
 
 ## License
 
-This project is licensed under the MIT License—see the LICENSE file for details.
+This project is licensed under the MIT License—see the LICENSE file for all the legal bits and bobs. *Slán go fóill!* (goodbye for now!)
