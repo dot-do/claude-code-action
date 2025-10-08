@@ -2,50 +2,50 @@
 
 # Claude Code Action
 
-A general-purpose [Claude Code](https://claude.ai/code) action for GitHub PRs and issues that can answer questions and implement code changes. This action intelligently detects when to activate based on your workflow context—whether responding to @claude mentions, issue assignments, or executing automation tasks with explicit prompts. It supports multiple authentication methods including Anthropic direct API, Amazon Bedrock, and Google Vertex AI.
+A fair dinkum [Claude Code](https://claude.ai/code) action for GitHub PRs and issues that can answer questions and implement code changes. This ripper of an action intelligently detects when to activate based on your workflow context—whether responding to @claude mentions, issue assignments, or executing automation tasks with explicit prompts. She'll be right with multiple authentication methods including Anthropic direct API, Amazon Bedrock, and Google Vertex AI.
 
 ## Features
 
-- 🎯 **Intelligent Mode Detection**: Automatically selects the appropriate execution mode based on your workflow context—no configuration needed
-- 🤖 **Interactive Code Assistant**: Claude can answer questions about code, architecture, and programming
-- 🔍 **Code Review**: Analyzes PR changes and suggests improvements
-- ✨ **Code Implementation**: Can implement simple fixes, refactoring, and even new features
-- 💬 **PR/Issue Integration**: Works seamlessly with GitHub comments and PR reviews
+- 🎯 **Smart Mode Detection**: Automatically selects the right execution mode based on your workflow context—no mucking about with configuration
+- 🤖 **Interactive Code Mate**: Claude can answer questions about code, architecture, and programming like a proper coding buddy
+- 🔍 **Code Review**: Analyses PR changes and suggests improvements (fair dinkum advice, no worries)
+- ✨ **Code Implementation**: Can implement simple fixes, refactoring, and even new features—she's a champion
+- 💬 **PR/Issue Integration**: Works like a dream with GitHub comments and PR reviews
 - 🛠️ **Flexible Tool Access**: Access to GitHub APIs and file operations (additional tools can be enabled via configuration)
-- 📋 **Progress Tracking**: Visual progress indicators with checkboxes that dynamically update as Claude completes tasks
+- 📋 **Progress Tracking**: Visual progress indicators with checkboxes that dynamically update as Claude gets stuck into tasks
 - 🏃 **Runs on Your Infrastructure**: The action executes entirely on your own GitHub runner (Anthropic API calls go to your chosen provider)
 - ⚙️ **Simplified Configuration**: Unified `prompt` and `claude_args` inputs provide clean, powerful configuration aligned with Claude Code SDK
 
 ## 📦 Upgrading from v0.x?
 
-**See our [Migration Guide](./docs/migration-guide.md)** for step-by-step instructions on updating your workflows to v1.0. The new version simplifies configuration while maintaining compatibility with most existing setups.
+**Check out our [Migration Guide](./docs/migration-guide.md)** for step-by-step instructions on updating your workflows to v1.0. The new version simplifies configuration while maintaining compatibility with most existing setups—no dramas!
 
-## Quickstart
+## Getting Started
 
-The easiest way to set up this action is through [Claude Code](https://claude.ai/code) in the terminal. Just open `claude` and run `/install-github-app`.
+The easiest way to get this beauty up and running is through [Claude Code](https://claude.ai/code) in the terminal. Just open `claude` and run `/install-github-app`.
 
-This command will guide you through setting up the GitHub app and required secrets.
+This command will walk you through setting up the GitHub app and required secrets—piece of cake!
 
-**Note**:
+**Heads up**:
 
-- You must be a repository admin to install the GitHub app and add secrets
-- This quickstart method is only available for direct Anthropic API users. For AWS Bedrock or Google Vertex AI setup, see [docs/cloud-providers.md](./docs/cloud-providers.md).
+- You'll need to be a repository admin to install the GitHub app and add secrets
+- This quickstart method is only available for direct Anthropic API users. For AWS Bedrock or Google Vertex AI setup, have a squiz at [docs/cloud-providers.md](./docs/cloud-providers.md).
 
 ## 📚 Solutions & Use Cases
 
-Looking for specific automation patterns? Check our **[Solutions Guide](./docs/solutions.md)** for complete working examples including:
+Looking for specific automation patterns? Have a gander at our **[Solutions Guide](./docs/solutions.md)** for complete working examples including:
 
-- **🔍 Automatic PR Code Review** - Full review automation
+- **🔍 Automatic PR Code Review** - Full review automation (top-notch stuff)
 - **📂 Path-Specific Reviews** - Trigger on critical file changes
-- **👥 External Contributor Reviews** - Special handling for new contributors
-- **📝 Custom Review Checklists** - Enforce team standards
+- **👥 External Contributor Reviews** - Special handling for new contributors (treat 'em right)
+- **📝 Custom Review Checklists** - Enforce team standards (keep everyone on track)
 - **🔄 Scheduled Maintenance** - Automated repository health checks
-- **🏷️ Issue Triage & Labeling** - Automatic categorization
+- **🏷️ Issue Triage & Labelling** - Automatic categorisation
 - **📖 Documentation Sync** - Keep docs updated with code changes
-- **🔒 Security-Focused Reviews** - OWASP-aligned security analysis
+- **🔒 Security-Focused Reviews** - OWASP-aligned security analysis (keeping it secure, mate)
 - **📊 DIY Progress Tracking** - Create tracking comments in automation mode
 
-Each solution includes complete working examples, configuration details, and expected outcomes.
+Each solution includes complete working examples, configuration details, and expected outcomes—the full box and dice.
 
 ## Documentation
 
@@ -63,7 +63,7 @@ Each solution includes complete working examples, configuration details, and exp
 
 ## 📚 FAQ
 
-Having issues or questions? Check out our [Frequently Asked Questions](./docs/faq.md) for solutions to common problems and detailed explanations of Claude's capabilities and limitations.
+Got issues or questions? Have a look at our [Frequently Asked Questions](./docs/faq.md) for solutions to common problems and detailed explanations of Claude's capabilities and limitations.
 
 ## License
 
