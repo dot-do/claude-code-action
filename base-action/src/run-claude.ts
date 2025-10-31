@@ -140,8 +140,20 @@ export async function runClaude(promptPath: string, options: ClaudeOptions) {
 
   // Capture output for parsing execution metrics
   let output = "";
+  let hasRateLimitError = false;
+
   claudeProcess.stdout.on("data", (data) => {
     const text = data.toString();
+
+    // Check for rate limit errors (429, throttling, etc.)
+    if (
+      text.includes("429") ||
+      text.includes("Too many requests") ||
+      text.includes("rate limit") ||
+      text.includes("throttl")
+    ) {
+      hasRateLimitError = true;
+    }
 
     // Try to parse as JSON and pretty print if it's on a single line
     const lines = text.split("\n");
@@ -235,6 +247,13 @@ export async function runClaude(promptPath: string, options: ClaudeOptions) {
     core.setOutput("conclusion", "success");
     core.setOutput("execution_file", EXECUTION_FILE);
   } else {
+    // If this was a rate limit error, throw to allow retry
+    if (hasRateLimitError) {
+      throw new Error(
+        `Claude CLI failed with rate limit error (exit code ${exitCode})`,
+      );
+    }
+
     core.setOutput("conclusion", "failure");
 
     // Still try to save execution file if we have output
@@ -254,4 +273,61 @@ export async function runClaude(promptPath: string, options: ClaudeOptions) {
 
     process.exit(exitCode);
   }
+}
+
+/**
+ * Run Claude with automatic retry on rate limit errors
+ */
+export async function runClaudeWithRetry(
+  promptPath: string,
+  options: ClaudeOptions,
+  retryOptions?: {
+    maxAttempts?: number;
+    initialDelayMs?: number;
+    maxDelayMs?: number;
+  },
+) {
+  const {
+    maxAttempts = 5,
+    initialDelayMs = 60000, // Start with 1 minute
+    maxDelayMs = 960000, // Max 16 minutes
+  } = retryOptions || {};
+
+  let delayMs = initialDelayMs;
+  let lastError: Error | undefined;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      console.log(`\n🤖 Claude execution attempt ${attempt} of ${maxAttempts}`);
+      await runClaude(promptPath, options);
+      console.log(`✅ Claude execution succeeded on attempt ${attempt}`);
+      return; // Success!
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      // Only retry on rate limit errors
+      if (!lastError.message.includes("rate limit")) {
+        // Not a rate limit error, don't retry
+        throw lastError;
+      }
+
+      console.error(
+        `⚠️  Attempt ${attempt} failed with rate limit error: ${lastError.message}`,
+      );
+
+      if (attempt < maxAttempts) {
+        console.log(
+          `🔄 Retrying in ${delayMs / 1000} seconds (exponential backoff)...`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        // Exponential backoff: double the delay for next attempt
+        delayMs = Math.min(delayMs * 2, maxDelayMs);
+      }
+    }
+  }
+
+  console.error(
+    `❌ Claude execution failed after ${maxAttempts} attempts due to rate limiting`,
+  );
+  throw lastError;
 }
