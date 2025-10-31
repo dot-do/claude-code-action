@@ -277,6 +277,13 @@ export async function runClaude(promptPath: string, options: ClaudeOptions) {
 
 /**
  * Run Claude with automatic retry on rate limit errors
+ *
+ * Strategy:
+ * 1. First attempt: Use AWS Bedrock (we have credits)
+ * 2. If rate limited: Switch to Anthropic API (fallback, costs money)
+ * 3. If still rate limited: Retry with Anthropic a few more times
+ *
+ * TODO: AWS rate limit increase requested - once approved, we can rely on Bedrock more
  */
 export async function runClaudeWithRetry(
   promptPath: string,
@@ -295,12 +302,15 @@ export async function runClaudeWithRetry(
 
   let delayMs = initialDelayMs;
   let lastError: Error | undefined;
+  let usingBedrock = process.env.CLAUDE_CODE_USE_BEDROCK === "1";
+  let switchedToAnthropic = false;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      console.log(`\n🤖 Claude execution attempt ${attempt} of ${maxAttempts}`);
+      const provider = usingBedrock ? "AWS Bedrock" : "Anthropic API";
+      console.log(`\n🤖 Claude execution attempt ${attempt} of ${maxAttempts} (${provider})`);
       await runClaude(promptPath, options);
-      console.log(`✅ Claude execution succeeded on attempt ${attempt}`);
+      console.log(`✅ Claude execution succeeded on attempt ${attempt} using ${provider}`);
       return; // Success!
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
@@ -314,6 +324,20 @@ export async function runClaudeWithRetry(
       console.error(
         `⚠️  Attempt ${attempt} failed with rate limit error: ${lastError.message}`,
       );
+
+      // On first rate limit with Bedrock, try switching to Anthropic API
+      if (attempt === 1 && usingBedrock && process.env.ANTHROPIC_API_KEY) {
+        console.log(
+          `🔄 AWS Bedrock rate limited. Switching to Anthropic API (fallback, uses credits instead of AWS)...`,
+        );
+        // Switch from Bedrock to Anthropic API
+        process.env.CLAUDE_CODE_USE_BEDROCK = "0";
+        delete process.env.AWS_BEARER_TOKEN_BEDROCK;
+        usingBedrock = false;
+        switchedToAnthropic = true;
+        // Retry immediately with Anthropic, no delay needed
+        continue;
+      }
 
       if (attempt < maxAttempts) {
         console.log(
@@ -329,5 +353,10 @@ export async function runClaudeWithRetry(
   console.error(
     `❌ Claude execution failed after ${maxAttempts} attempts due to rate limiting`,
   );
+  if (switchedToAnthropic) {
+    console.error(
+      `   Attempted both AWS Bedrock and Anthropic API - both rate limited`,
+    );
+  }
   throw lastError;
 }
