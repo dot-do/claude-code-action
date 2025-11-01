@@ -214,25 +214,106 @@ async function run() {
       errorDetails,
     };
 
-    const updatedBody = updateCommentBody(commentInput);
+    // Check if this is a PR and if a review was submitted
+    let shouldDeleteComment = false;
+    if (context.isPR && !actionFailed) {
+      try {
+        // Check if the bot submitted a review on this PR
+        const reviews = await octokit.rest.pulls.listReviews({
+          owner,
+          repo,
+          pull_number: context.entityNumber,
+          per_page: 10, // Check last 10 reviews
+        });
 
-    try {
-      await updateClaudeComment(octokit.rest, {
-        owner,
-        repo,
-        commentId,
-        body: updatedBody,
-        isPullRequestReviewComment: isPRReviewComment,
-      });
-      console.log(
-        `✅ Updated ${isPRReviewComment ? "PR review" : "issue"} comment ${commentId} with job link`,
-      );
-    } catch (updateError) {
-      console.error(
-        `Failed to update ${isPRReviewComment ? "PR review" : "issue"} comment:`,
-        updateError,
-      );
-      throw updateError;
+        // Get the bot's username from the comment
+        const botUsername = comment.user?.login;
+        if (botUsername) {
+          // Check if bot submitted a review in the last 5 minutes
+          // (this should be more than enough time for the action to complete)
+          const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+          const recentBotReview = reviews.data.find(
+            (review) =>
+              review.user?.login === botUsername &&
+              new Date(review.submitted_at || 0) > fiveMinutesAgo,
+          );
+
+          if (recentBotReview) {
+            shouldDeleteComment = true;
+            console.log(
+              `✓ Bot submitted review #${recentBotReview.id} at ${recentBotReview.submitted_at} - will delete progress comment instead of updating`,
+            );
+          }
+        }
+      } catch (error) {
+        console.log("Could not check for review submission:", error);
+        // Continue with normal update if check fails
+      }
+    }
+
+    if (shouldDeleteComment) {
+      // Delete the comment since a review was submitted
+      try {
+        if (isPRReviewComment) {
+          await octokit.rest.pulls.deleteReviewComment({
+            owner,
+            repo,
+            comment_id: commentId,
+          });
+        } else {
+          await octokit.rest.issues.deleteComment({
+            owner,
+            repo,
+            comment_id: commentId,
+          });
+        }
+        console.log(
+          `✅ Deleted ${isPRReviewComment ? "PR review" : "issue"} comment ${commentId} (review was submitted)`,
+        );
+      } catch (deleteError) {
+        console.error(
+          `Failed to delete ${isPRReviewComment ? "PR review" : "issue"} comment:`,
+          deleteError,
+        );
+        // Fall back to updating the comment if deletion fails
+        try {
+          const updatedBody = updateCommentBody(commentInput);
+          await updateClaudeComment(octokit.rest, {
+            owner,
+            repo,
+            commentId,
+            body: updatedBody,
+            isPullRequestReviewComment: isPRReviewComment,
+          });
+          console.log(
+            `✅ Updated ${isPRReviewComment ? "PR review" : "issue"} comment ${commentId} (deletion failed, fell back to update)`,
+          );
+        } catch (updateError) {
+          console.error("Failed to update comment after deletion failed:", updateError);
+          throw updateError;
+        }
+      }
+    } else {
+      // Normal update flow - no review was submitted
+      const updatedBody = updateCommentBody(commentInput);
+      try {
+        await updateClaudeComment(octokit.rest, {
+          owner,
+          repo,
+          commentId,
+          body: updatedBody,
+          isPullRequestReviewComment: isPRReviewComment,
+        });
+        console.log(
+          `✅ Updated ${isPRReviewComment ? "PR review" : "issue"} comment ${commentId} with job link`,
+        );
+      } catch (updateError) {
+        console.error(
+          `Failed to update ${isPRReviewComment ? "PR review" : "issue"} comment:`,
+          updateError,
+        );
+        throw updateError;
+      }
     }
 
     process.exit(0);
