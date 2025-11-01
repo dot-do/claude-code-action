@@ -15,6 +15,52 @@ import { GITHUB_SERVER_URL } from "../github/api/config";
 import { checkAndCommitOrDeleteBranch } from "../github/operations/branch-cleanup";
 import { updateClaudeComment } from "../github/operations/comments/update-claude-comment";
 
+/**
+ * Check if the bot submitted a review on the PR within a time window
+ */
+async function didBotSubmitRecentReview(
+  octokit: ReturnType<typeof createOctokit>,
+  params: {
+    owner: string;
+    repo: string;
+    pull_number: number;
+    botUsername: string;
+    windowMinutes?: number;
+  },
+): Promise<{ submitted: boolean; reviewId?: number; submittedAt?: string }> {
+  const { owner, repo, pull_number, botUsername, windowMinutes = 5 } = params;
+
+  try {
+    const reviews = await octokit.rest.pulls.listReviews({
+      owner,
+      repo,
+      pull_number,
+      per_page: 10, // Check last 10 reviews
+    });
+
+    const cutoffTime = new Date(Date.now() - windowMinutes * 60 * 1000);
+    const recentBotReview = reviews.data.find(
+      (review) =>
+        review.user?.login === botUsername &&
+        review.submitted_at && // Type guard - ensure timestamp exists
+        new Date(review.submitted_at) > cutoffTime,
+    );
+
+    if (recentBotReview) {
+      return {
+        submitted: true,
+        reviewId: recentBotReview.id,
+        submittedAt: recentBotReview.submitted_at || undefined,
+      };
+    }
+
+    return { submitted: false };
+  } catch (error) {
+    console.log("Could not check for review submission:", error);
+    return { submitted: false };
+  }
+}
+
 async function run() {
   try {
     const commentId = parseInt(process.env.CLAUDE_COMMENT_ID!);
@@ -217,37 +263,22 @@ async function run() {
     // Check if this is a PR and if a review was submitted
     let shouldDeleteComment = false;
     if (context.isPR && !actionFailed) {
-      try {
-        // Check if the bot submitted a review on this PR
-        const reviews = await octokit.rest.pulls.listReviews({
+      const botUsername = comment.user?.login;
+      if (botUsername) {
+        const reviewCheck = await didBotSubmitRecentReview(octokit, {
           owner,
           repo,
           pull_number: context.entityNumber,
-          per_page: 10, // Check last 10 reviews
+          botUsername,
+          windowMinutes: 5, // Check last 5 minutes
         });
 
-        // Get the bot's username from the comment
-        const botUsername = comment.user?.login;
-        if (botUsername) {
-          // Check if bot submitted a review in the last 5 minutes
-          // (this should be more than enough time for the action to complete)
-          const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-          const recentBotReview = reviews.data.find(
-            (review) =>
-              review.user?.login === botUsername &&
-              new Date(review.submitted_at || 0) > fiveMinutesAgo,
+        if (reviewCheck.submitted) {
+          shouldDeleteComment = true;
+          console.log(
+            `✓ Bot submitted review #${reviewCheck.reviewId} at ${reviewCheck.submittedAt} - will delete progress comment instead of updating`,
           );
-
-          if (recentBotReview) {
-            shouldDeleteComment = true;
-            console.log(
-              `✓ Bot submitted review #${recentBotReview.id} at ${recentBotReview.submitted_at} - will delete progress comment instead of updating`,
-            );
-          }
         }
-      } catch (error) {
-        console.log("Could not check for review submission:", error);
-        // Continue with normal update if check fails
       }
     }
 
