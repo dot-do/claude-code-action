@@ -10,6 +10,12 @@ async function run() {
   try {
     validateEnvironmentVariables();
 
+    // Route all Claude API requests through claude-lb proxy
+    // This provides: Bedrock-first routing, immediate Anthropic failover, AI Gateway tracking
+    process.env.ANTHROPIC_BASE_URL = "https://claude-lb.dotdo.workers.dev";
+    console.log("🔀 Routing Claude API requests through claude-lb proxy");
+    console.log("   Bedrock-first with immediate Anthropic failover on 429");
+
     await setupClaudeCodeSettings(
       process.env.INPUT_SETTINGS,
       undefined, // homeDir
