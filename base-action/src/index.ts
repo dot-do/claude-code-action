@@ -5,16 +5,22 @@ import { preparePrompt } from "./prepare-prompt";
 import { runClaudeWithRetry } from "./run-claude";
 import { setupClaudeCodeSettings } from "./setup-claude-code-settings";
 import { validateEnvironmentVariables } from "./validate-env";
+import { startProxyServer, getProxyUrl } from "./proxy-server";
 
 async function run() {
   try {
     validateEnvironmentVariables();
 
-    // Route all Claude API requests through claude-lb proxy
-    // This provides: Bedrock-first routing, immediate Anthropic failover, AI Gateway tracking
-    process.env.ANTHROPIC_BASE_URL = "https://claude-lb.dotdo.workers.dev";
-    console.log("🔀 Routing Claude API requests through claude-lb proxy");
+    // Start local HTTP proxy server that adds auth headers
+    // This enables secure pass-through authentication to claude-lb worker
+    const proxyPort = await startProxyServer();
+    console.log(`✅ Proxy server started on port ${proxyPort}`);
+
+    // Route Claude CLI through local proxy (which forwards to claude-lb with auth headers)
+    process.env.ANTHROPIC_BASE_URL = getProxyUrl();
+    console.log("🔀 Routing Claude API requests through local proxy → claude-lb");
     console.log("   Bedrock-first with immediate Anthropic failover on 429");
+    console.log("   🔒 Secure pass-through auth (no secrets in worker)");
 
     await setupClaudeCodeSettings(
       process.env.INPUT_SETTINGS,
