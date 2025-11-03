@@ -5,22 +5,24 @@ import { preparePrompt } from "./prepare-prompt";
 import { runClaudeWithRetry } from "./run-claude";
 import { setupClaudeCodeSettings } from "./setup-claude-code-settings";
 import { validateEnvironmentVariables } from "./validate-env";
-import { startProxyServer, getProxyUrl } from "./proxy-server";
+import { startProxyServer, getProxyUrl, shouldUseProxy } from "./proxy-server";
 
 async function run() {
   try {
     validateEnvironmentVariables();
 
-    // Start local HTTP proxy server that adds auth headers
-    // This enables secure pass-through authentication to claude-lb worker
+    // Start local HTTP proxy server for claude-lb (supports multiple modes)
     const proxyPort = await startProxyServer();
-    console.log(`✅ Proxy server started on port ${proxyPort}`);
 
-    // Route Claude CLI through local proxy (which forwards to claude-lb with auth headers)
-    process.env.ANTHROPIC_BASE_URL = getProxyUrl();
-    console.log("🔀 Routing Claude API requests through local proxy → claude-lb");
-    console.log("   Bedrock-first with immediate Anthropic failover on 429");
-    console.log("   🔒 Secure pass-through auth (no secrets in worker)");
+    // Only route through proxy if credentials are available
+    if (shouldUseProxy()) {
+      process.env.ANTHROPIC_BASE_URL = getProxyUrl();
+      console.log(`\n🔀 Claude API requests routed through claude-lb proxy`);
+      console.log(`   Benefits: Centralized monitoring, observability, and multi-provider failover`);
+    } else {
+      console.log(`\n⚡️ Using direct Anthropic API (no proxy)`);
+      console.log(`   To enable monitoring, set ANTHROPIC_API_KEY in secrets`);
+    }
 
     await setupClaudeCodeSettings(
       process.env.INPUT_SETTINGS,
