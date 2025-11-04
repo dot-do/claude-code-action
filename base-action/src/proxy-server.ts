@@ -8,7 +8,7 @@
  * - Direct routing through AI Gateway (no intermediate worker hop)
  * - Centralized monitoring and observability via Cloudflare AI Gateway
  * - Intelligent failover: Bedrock first (uses $100k credits), then Anthropic
- * - Zero-delay failover on 429 rate limits
+ * - Zero-delay failover on ANY Bedrock error (429, 430, 500, 403, etc.)
  */
 
 const PROXY_PORT = 18765; // Local proxy port
@@ -185,14 +185,9 @@ export async function startProxyServer(): Promise<number> {
             return bedrockResponse;
           }
 
-          // If 429 rate limit, fall through to Anthropic
-          if (bedrockResponse.status === 429) {
-            console.log('⚠️  Bedrock rate limited (429) - failing over to Anthropic immediately');
-          } else {
-            // Other errors, return the error (don't failover for non-429 errors)
-            stats.failures++;
-            return bedrockResponse;
-          }
+          // Any Bedrock error triggers immediate failover to Anthropic
+          console.log(`⚠️  Bedrock returned ${bedrockResponse.status} - failing over to Anthropic immediately`);
+          // Fall through to Anthropic for ANY error (429, 430, 500, 403, etc.)
         } catch (error) {
           console.error('❌ Bedrock request threw error:', error);
           // Fall through to Anthropic on any error
