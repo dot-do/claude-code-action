@@ -2,6 +2,53 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## ⚠️ CRITICAL: Repository Context
+
+This is a **FORK** of `anthropics/claude-code-action`. This repository is `dot-do/claude-code-action`.
+
+### Pull Request Rules
+
+**NEVER create PRs against `anthropics/claude-code-action`**
+
+- ✅ **CORRECT**: Create PRs in `dot-do/claude-code-action` (this repository)
+- ❌ **WRONG**: Create PRs in `anthropics/claude-code-action` (upstream)
+
+When using `gh pr create`, ALWAYS specify the repository explicitly:
+
+```bash
+# CORRECT - Specify our fork explicitly
+gh pr create --repo dot-do/claude-code-action --base main --title "..." --body "..."
+
+# WRONG - Default behavior may target upstream
+gh pr create --title "..." --body "..."
+```
+
+### Repository Structure
+
+```
+origin   → https://github.com/dot-do/claude-code-action.git      (OUR FORK)
+upstream → https://github.com/anthropics/claude-code-action.git  (UPSTREAM)
+```
+
+**Default behavior**: `gh pr create` targets the upstream repository when working in a fork. This is NOT what we want.
+
+### Syncing with Upstream
+
+To pull changes from upstream Anthropic repository:
+
+```bash
+git fetch upstream
+git merge upstream/main
+git push origin main
+```
+
+### Why This Matters
+
+- **Upstream pollution**: Creating PRs in upstream confuses Anthropic maintainers
+- **Wrong codebase**: Our fork has custom modifications specific to `.do` platform
+- **Permission issues**: We don't have merge rights in upstream repository
+- **Workflow disruption**: PRs in wrong repo waste time and create confusion
+
 ## Development Tools
 
 - Runtime: Bun 1.2.11
