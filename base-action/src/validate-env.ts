@@ -23,17 +23,22 @@ export function validateEnvironmentVariables() {
       );
     }
   } else if (useBedrock) {
-    const requiredBedrockVars = {
-      AWS_REGION: process.env.AWS_REGION,
-      AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
-      AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
-    };
+    // AWS_REGION is always required
+    if (!process.env.AWS_REGION) {
+      errors.push("AWS_REGION is required when using AWS Bedrock.");
+    }
 
-    Object.entries(requiredBedrockVars).forEach(([key, value]) => {
-      if (!value) {
-        errors.push(`${key} is required when using AWS Bedrock.`);
-      }
-    });
+    // Support bearer token authentication (simpler) or full AWS credentials
+    const hasBearerToken = !!process.env.AWS_BEARER_TOKEN_BEDROCK;
+    const hasAwsCredentials =
+      !!process.env.AWS_ACCESS_KEY_ID &&
+      !!process.env.AWS_SECRET_ACCESS_KEY;
+
+    if (!hasBearerToken && !hasAwsCredentials) {
+      errors.push(
+        "AWS Bedrock requires either AWS_BEARER_TOKEN_BEDROCK (for Bedrock API keys) or both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY (for IAM credentials).",
+      );
+    }
   } else if (useVertex) {
     const requiredVertexVars = {
       ANTHROPIC_VERTEX_PROJECT_ID: process.env.ANTHROPIC_VERTEX_PROJECT_ID,

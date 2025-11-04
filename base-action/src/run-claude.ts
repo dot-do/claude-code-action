@@ -12,59 +12,6 @@ const PIPE_PATH = `${process.env.RUNNER_TEMP}/claude_prompt_pipe`;
 const EXECUTION_FILE = `${process.env.RUNNER_TEMP}/claude-execution-output.json`;
 const BASE_ARGS = ["--verbose", "--output-format", "stream-json"];
 
-/**
- * Sanitizes JSON output to remove sensitive information when full output is disabled
- * Returns a safe summary message or null if the message should be completely suppressed
- */
-function sanitizeJsonOutput(
-  jsonObj: any,
-  showFullOutput: boolean,
-): string | null {
-  if (showFullOutput) {
-    // In full output mode, return the full JSON
-    return JSON.stringify(jsonObj, null, 2);
-  }
-
-  // In non-full-output mode, provide minimal safe output
-  const type = jsonObj.type;
-  const subtype = jsonObj.subtype;
-
-  // System initialization - safe to show
-  if (type === "system" && subtype === "init") {
-    return JSON.stringify(
-      {
-        type: "system",
-        subtype: "init",
-        message: "Claude Code initialized",
-        model: jsonObj.model || "unknown",
-      },
-      null,
-      2,
-    );
-  }
-
-  // Result messages - Always show the final result
-  if (type === "result") {
-    // These messages contain the final result and should always be visible
-    return JSON.stringify(
-      {
-        type: "result",
-        subtype: jsonObj.subtype,
-        is_error: jsonObj.is_error,
-        duration_ms: jsonObj.duration_ms,
-        num_turns: jsonObj.num_turns,
-        total_cost_usd: jsonObj.total_cost_usd,
-        permission_denials: jsonObj.permission_denials,
-      },
-      null,
-      2,
-    );
-  }
-
-  // For any other message types, suppress completely in non-full-output mode
-  return null;
-}
-
 export type ClaudeOptions = {
   claudeArgs?: string;
   model?: string;
@@ -77,7 +24,6 @@ export type ClaudeOptions = {
   appendSystemPrompt?: string;
   claudeEnv?: string;
   fallbackModel?: string;
-  showFullOutput?: string;
 };
 
 type PreparedConfig = {
@@ -192,27 +138,24 @@ export async function runClaude(promptPath: string, options: ClaudeOptions) {
     pipeStream.destroy();
   });
 
-  // Determine if full output should be shown
-  // Show full output if explicitly set to "true" OR if GitHub Actions debug mode is enabled
-  const isDebugMode = process.env.ACTIONS_STEP_DEBUG === "true";
-  let showFullOutput = options.showFullOutput === "true" || isDebugMode;
-
-  if (isDebugMode && options.showFullOutput !== "false") {
-    console.log("Debug mode detected - showing full output");
-    showFullOutput = true;
-  } else if (!showFullOutput) {
-    console.log("Running Claude Code (full output hidden for security)...");
-    console.log(
-      "Rerun in debug mode or enable `show_full_output: true` in your workflow file for full output.",
-    );
-  }
-
   // Capture output for parsing execution metrics
   let output = "";
+  let hasRateLimitError = false;
+
   claudeProcess.stdout.on("data", (data) => {
     const text = data.toString();
 
-    // Try to parse as JSON and handle based on verbose setting
+    // Check for rate limit errors (429, throttling, etc.)
+    if (
+      text.includes("429") ||
+      text.includes("Too many requests") ||
+      text.includes("rate limit") ||
+      text.includes("throttl")
+    ) {
+      hasRateLimitError = true;
+    }
+
+    // Try to parse as JSON and pretty print if it's on a single line
     const lines = text.split("\n");
     lines.forEach((line: string, index: number) => {
       if (line.trim() === "") return;
@@ -220,24 +163,17 @@ export async function runClaude(promptPath: string, options: ClaudeOptions) {
       try {
         // Check if this line is a JSON object
         const parsed = JSON.parse(line);
-        const sanitizedOutput = sanitizeJsonOutput(parsed, showFullOutput);
-
-        if (sanitizedOutput) {
-          process.stdout.write(sanitizedOutput);
-          if (index < lines.length - 1 || text.endsWith("\n")) {
-            process.stdout.write("\n");
-          }
+        const prettyJson = JSON.stringify(parsed, null, 2);
+        process.stdout.write(prettyJson);
+        if (index < lines.length - 1 || text.endsWith("\n")) {
+          process.stdout.write("\n");
         }
       } catch (e) {
-        // Not a JSON object
-        if (showFullOutput) {
-          // In full output mode, print as is
-          process.stdout.write(line);
-          if (index < lines.length - 1 || text.endsWith("\n")) {
-            process.stdout.write("\n");
-          }
+        // Not a JSON object, print as is
+        process.stdout.write(line);
+        if (index < lines.length - 1 || text.endsWith("\n")) {
+          process.stdout.write("\n");
         }
-        // In non-full-output mode, suppress non-JSON output
       }
     });
 
@@ -311,6 +247,13 @@ export async function runClaude(promptPath: string, options: ClaudeOptions) {
     core.setOutput("conclusion", "success");
     core.setOutput("execution_file", EXECUTION_FILE);
   } else {
+    // If this was a rate limit error, throw to allow retry
+    if (hasRateLimitError) {
+      throw new Error(
+        `Claude CLI failed with rate limit error (exit code ${exitCode})`,
+      );
+    }
+
     core.setOutput("conclusion", "failure");
 
     // Still try to save execution file if we have output
@@ -330,4 +273,29 @@ export async function runClaude(promptPath: string, options: ClaudeOptions) {
 
     process.exit(exitCode);
   }
+}
+
+/**
+ * Run Claude via claude-lb proxy
+ *
+ * The claude-lb worker handles all retry logic:
+ * 1. Always tries AWS Bedrock first (via AI Gateway)
+ * 2. On 429 rate limit: immediate Anthropic failover (HTTP-level, milliseconds)
+ * 3. All tracking via Cloudflare AI Gateway
+ *
+ * No retry logic needed here - single execution with failover handled by proxy.
+ */
+export async function runClaudeWithRetry(
+  promptPath: string,
+  options: ClaudeOptions,
+  retryOptions?: {
+    maxAttempts?: number;
+  },
+) {
+  console.log('\n🤖 Executing Claude via claude-lb proxy (Bedrock-first with instant failover)');
+
+  // Single execution - proxy handles Bedrock->Anthropic failover transparently
+  await runClaude(promptPath, options);
+
+  console.log('✅ Claude execution succeeded');
 }

@@ -2,25 +2,31 @@
 
 import * as core from "@actions/core";
 import { preparePrompt } from "./prepare-prompt";
-import { runClaude } from "./run-claude";
+import { runClaudeWithRetry } from "./run-claude";
 import { setupClaudeCodeSettings } from "./setup-claude-code-settings";
 import { validateEnvironmentVariables } from "./validate-env";
-import { installPlugins } from "./install-plugins";
+import { startProxyServer, getProxyUrl, shouldUseProxy } from "./proxy-server";
 
 async function run() {
   try {
     validateEnvironmentVariables();
 
+    // Start local HTTP proxy server for claude-lb (supports multiple modes)
+    const proxyPort = await startProxyServer();
+
+    // Only route through proxy if credentials are available
+    if (shouldUseProxy()) {
+      process.env.ANTHROPIC_BASE_URL = getProxyUrl();
+      console.log(`\n🔀 Claude API requests routed through claude-lb proxy`);
+      console.log(`   Benefits: Centralized monitoring, observability, and multi-provider failover`);
+    } else {
+      console.log(`\n⚡️ Using direct Anthropic API (no proxy)`);
+      console.log(`   To enable monitoring, set ANTHROPIC_API_KEY in secrets`);
+    }
+
     await setupClaudeCodeSettings(
       process.env.INPUT_SETTINGS,
       undefined, // homeDir
-    );
-
-    // Install Claude Code plugins if specified
-    await installPlugins(
-      process.env.INPUT_PLUGIN_MARKETPLACES,
-      process.env.INPUT_PLUGINS,
-      process.env.INPUT_PATH_TO_CLAUDE_CODE_EXECUTABLE,
     );
 
     const promptConfig = await preparePrompt({
@@ -28,7 +34,7 @@ async function run() {
       promptFile: process.env.INPUT_PROMPT_FILE || "",
     });
 
-    await runClaude(promptConfig.path, {
+    await runClaudeWithRetry(promptConfig.path, {
       claudeArgs: process.env.INPUT_CLAUDE_ARGS,
       allowedTools: process.env.INPUT_ALLOWED_TOOLS,
       disallowedTools: process.env.INPUT_DISALLOWED_TOOLS,
@@ -41,7 +47,6 @@ async function run() {
       model: process.env.ANTHROPIC_MODEL,
       pathToClaudeCodeExecutable:
         process.env.INPUT_PATH_TO_CLAUDE_CODE_EXECUTABLE,
-      showFullOutput: process.env.INPUT_SHOW_FULL_OUTPUT,
     });
   } catch (error) {
     core.setFailed(`Action failed with error: ${error}`);
