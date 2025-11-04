@@ -128,7 +128,7 @@ export async function startProxyServer(): Promise<number> {
   const server = Bun.serve({
     port: PROXY_PORT,
     hostname: '127.0.0.1',
-    idleTimeout: 300, // 5 minutes for long-running Claude API requests
+    idleTimeout: 255, // Max allowed by Bun (4.25 minutes) for long-running Claude API requests
 
     async fetch(req: Request): Promise<Response> {
       const url = new URL(req.url);
