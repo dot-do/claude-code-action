@@ -15,9 +15,9 @@
  * - ANTHROPIC_API_KEY must be set (for failover)
  */
 
-const PROXY_PORT = 18765; // Local proxy port
-const AI_GATEWAY_ACCOUNT = 'b6641681fe423910342b9ffa1364c76d';
-const AI_GATEWAY_ID = 'claude-gateway';
+const PROXY_PORT = 18765; // Local proxy port chosen to avoid common conflicts
+const AI_GATEWAY_ACCOUNT = process.env.AI_GATEWAY_ACCOUNT || 'b6641681fe423910342b9ffa1364c76d';
+const AI_GATEWAY_ID = process.env.AI_GATEWAY_ID || 'claude-gateway';
 const AI_GATEWAY_BASE = `https://gateway.ai.cloudflare.com/v1/${AI_GATEWAY_ACCOUNT}/${AI_GATEWAY_ID}`;
 
 interface ProxyStats {
@@ -121,6 +121,8 @@ async function forwardToAnthropic(body: string, headers: Headers): Promise<Respo
   return response;
 }
 
+let proxyServer: any = null;
+
 export async function startProxyServer(): Promise<number> {
   // Validate credentials at startup - fail fast if misconfigured
   validateCredentials();
@@ -147,6 +149,9 @@ export async function startProxyServer(): Promise<number> {
 
       const body = await req.text();
 
+      // Track errors from both providers for debugging
+      let bedrockError: string | undefined;
+
       // Always try Bedrock first (uses $100k credits)
       try {
         const bedrockResponse = await forwardToBedrock(body, req.headers);
@@ -158,8 +163,11 @@ export async function startProxyServer(): Promise<number> {
         }
 
         // Any Bedrock error triggers immediate failover to Anthropic
+        const bedrockErrorBody = await bedrockResponse.text();
+        bedrockError = `Bedrock returned ${bedrockResponse.status}: ${bedrockErrorBody}`;
         console.log(`⚠️  Bedrock returned ${bedrockResponse.status} - failing over to Anthropic`);
       } catch (error) {
+        bedrockError = `Bedrock request error: ${String(error)}`;
         console.error('❌ Bedrock request error:', error);
       }
 
@@ -186,7 +194,9 @@ export async function startProxyServer(): Promise<number> {
         return new Response(
           JSON.stringify({
             error: 'Both Bedrock and Anthropic failed',
-            message: String(error)
+            bedrockError,
+            anthropicError: String(error),
+            stats
           }),
           { status: 500, headers: { 'Content-Type': 'application/json' } }
         );
@@ -194,12 +204,32 @@ export async function startProxyServer(): Promise<number> {
     }
   });
 
+  proxyServer = server;
+
   console.log(`✅ Proxy server listening on http://127.0.0.1:${server.port}`);
   console.log(`   Forwarding to Cloudflare AI Gateway (${AI_GATEWAY_BASE})`);
   console.log('   🔒 Bedrock-first with Anthropic failover');
   console.log(`   📊 Health endpoint: http://127.0.0.1:${server.port}/health`);
 
+  // Register graceful shutdown handlers
+  const shutdownHandler = () => {
+    console.log('\n🛑 Shutting down proxy server...');
+    stopProxyServer();
+    process.exit(0);
+  };
+
+  process.on('SIGTERM', shutdownHandler);
+  process.on('SIGINT', shutdownHandler);
+
   return server.port;
+}
+
+export function stopProxyServer(): void {
+  if (proxyServer) {
+    proxyServer.stop();
+    proxyServer = null;
+    console.log('✅ Proxy server stopped');
+  }
 }
 
 export function getProxyUrl(): string {
