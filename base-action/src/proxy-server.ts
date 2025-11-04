@@ -160,17 +160,17 @@ export async function startProxyServer(): Promise<number> {
     }
 
     const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+      // Special endpoint for health/stats (check this first!)
+      if (req.url === '/health') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(stats));
+        return;
+      }
+
       // Only proxy requests to /v1/messages
       if (req.url !== '/v1/messages' || req.method !== 'POST') {
         res.writeHead(404);
         res.end('Not Found');
-        return;
-      }
-
-      // Special endpoint for health/stats
-      if (req.url === '/health') {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(stats));
         return;
       }
 
