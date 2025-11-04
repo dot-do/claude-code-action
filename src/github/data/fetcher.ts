@@ -163,7 +163,7 @@ export async function fetchGitHubData({
       if (prResult.repository.pullRequest) {
         const pullRequest = prResult.repository.pullRequest;
         contextData = pullRequest;
-        changedFiles = pullRequest.files.nodes || [];
+        changedFiles = pullRequest.files?.nodes || [];
         comments = filterCommentsToTriggerTime(
           pullRequest.comments?.nodes || [],
           triggerTime,
@@ -171,6 +171,11 @@ export async function fetchGitHubData({
         reviewData = pullRequest.reviews || [];
 
         console.log(`Successfully fetched PR #${prNumber} data`);
+        if (!pullRequest.files || pullRequest.files.nodes === null) {
+          console.warn(
+            `Warning: PR #${prNumber} files data is null (likely >100 files or API limit). Changed files list will be empty.`,
+          );
+        }
       } else {
         throw new Error(`PR #${prNumber} not found`);
       }
