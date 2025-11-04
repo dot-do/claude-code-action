@@ -8,7 +8,7 @@
  * - Direct routing through AI Gateway (no intermediate worker hop)
  * - Centralized monitoring and observability via Cloudflare AI Gateway
  * - Intelligent failover: Bedrock first (uses $100k credits), then Anthropic
- * - Zero-delay failover on 429 rate limits
+ * - Zero-delay failover on ANY Bedrock error (429, 430, 500, 403, etc.)
  */
 
 const PROXY_PORT = 18765; // Local proxy port
@@ -33,14 +33,17 @@ const stats: ProxyStats = {
  * Determine proxy mode based on available credentials
  * - "bedrock-anthropic": Both credentials available (full failover)
  * - "anthropic-only": Only Anthropic key available
+ * - "bedrock-only": Only Bedrock token available
  * - "direct": No proxy, use direct Anthropic API
  */
-function getProxyMode(): 'bedrock-anthropic' | 'anthropic-only' | 'direct' {
+function getProxyMode(): 'bedrock-anthropic' | 'anthropic-only' | 'bedrock-only' | 'direct' {
   const hasBedrockToken = !!(process.env.AWS_BEARER_TOKEN_BEDROCK?.trim());
   const hasAnthropicKey = !!(process.env.ANTHROPIC_API_KEY?.trim());
 
   if (hasBedrockToken && hasAnthropicKey) {
     return 'bedrock-anthropic';
+  } else if (hasBedrockToken) {
+    return 'bedrock-only';
   } else if (hasAnthropicKey) {
     return 'anthropic-only';
   } else {
@@ -151,6 +154,7 @@ export async function startProxyServer(): Promise<number> {
   const server = Bun.serve({
     port: PROXY_PORT,
     hostname: '127.0.0.1',
+    idleTimeout: 300, // 5 minutes for long-running Claude API requests
 
     async fetch(req: Request): Promise<Response> {
       const url = new URL(req.url);
@@ -181,14 +185,9 @@ export async function startProxyServer(): Promise<number> {
             return bedrockResponse;
           }
 
-          // If 429 rate limit, fall through to Anthropic
-          if (bedrockResponse.status === 429) {
-            console.log('⚠️  Bedrock rate limited (429) - failing over to Anthropic immediately');
-          } else {
-            // Other errors, return the error (don't failover for non-429 errors)
-            stats.failures++;
-            return bedrockResponse;
-          }
+          // Any Bedrock error triggers immediate failover to Anthropic
+          console.log(`⚠️  Bedrock returned ${bedrockResponse.status} - failing over to Anthropic immediately`);
+          // Fall through to Anthropic for ANY error (429, 430, 500, 403, etc.)
         } catch (error) {
           console.error('❌ Bedrock request threw error:', error);
           // Fall through to Anthropic on any error
@@ -222,6 +221,8 @@ export async function startProxyServer(): Promise<number> {
   console.log(`   Mode: ${mode}`);
   if (mode === 'bedrock-anthropic') {
     console.log('   🔒 Bedrock-first with Anthropic failover via AI Gateway');
+  } else if (mode === 'bedrock-only') {
+    console.log('   🔒 Bedrock-only mode via AI Gateway (no Anthropic fallback)');
   } else if (mode === 'anthropic-only') {
     console.log('   🔒 Anthropic-only mode via AI Gateway (monitoring + observability)');
   }
