@@ -1,22 +1,20 @@
-import { createServer, IncomingMessage, ServerResponse } from 'http';
-import { request as httpsRequest } from 'https';
-
 /**
- * HTTP Proxy Server for claude-lb
+ * HTTP Proxy Server for Claude API via Cloudflare AI Gateway
  *
- * Intercepts Claude CLI requests and forwards them to claude-lb.dotdo.workers.dev
- * with authentication headers from environment variables.
+ * Intercepts Claude CLI requests and forwards them directly to Cloudflare AI Gateway,
+ * which routes to AWS Bedrock or Anthropic API based on availability.
  *
  * This enables:
- * - Secure pass-through authentication (no secrets stored in worker)
+ * - Direct routing through AI Gateway (no intermediate worker hop)
  * - Centralized monitoring and observability via Cloudflare AI Gateway
- * - Flexible multi-provider architecture (Bedrock, Anthropic, future providers)
- * - Intelligent retry and failover logic
+ * - Intelligent failover: Bedrock first (uses $100k credits), then Anthropic
+ * - Zero-delay failover on 429 rate limits
  */
 
 const PROXY_PORT = 18765; // Local proxy port
-const TARGET_HOST = 'claude-lb.dotdo.workers.dev';
-const DIRECT_ANTHROPIC_FALLBACK = true; // Fall back to direct API if proxy fails
+const AI_GATEWAY_ACCOUNT = 'b6641681fe423910342b9ffa1364c76d';
+const AI_GATEWAY_ID = 'claude-gateway';
+const AI_GATEWAY_BASE = `https://gateway.ai.cloudflare.com/v1/${AI_GATEWAY_ACCOUNT}/${AI_GATEWAY_ID}`;
 
 interface ProxyStats {
   requests: number;
@@ -51,166 +49,185 @@ function getProxyMode(): 'bedrock-anthropic' | 'anthropic-only' | 'direct' {
 }
 
 /**
- * Forward request to claude-lb proxy
+ * Forward request to AWS Bedrock via AI Gateway
  */
-function forwardToClaudeLB(
-  body: string,
-  headers: Record<string, string | string[] | undefined>,
-  res: ServerResponse
-): void {
-  const options = {
-    hostname: TARGET_HOST,
-    port: 443,
-    path: '/v1/messages',
-    method: 'POST',
-    headers: {
-      ...headers,
-      host: TARGET_HOST,
-      // Pass authentication headers (worker will use what's available)
-      'x-bedrock-token': process.env.AWS_BEARER_TOKEN_BEDROCK || '',
-      'x-anthropic-key': process.env.ANTHROPIC_API_KEY || '',
-    },
-  };
+async function forwardToBedrock(body: string, headers: Headers): Promise<Response> {
+  const bedrockToken = process.env.AWS_BEARER_TOKEN_BEDROCK;
+  if (!bedrockToken) {
+    console.log('⚠️  No Bedrock token available');
+    throw new Error('No Bedrock token');
+  }
 
-  const proxyReq = httpsRequest(options, (proxyRes) => {
-    stats.requests++;
+  // AI Gateway URL for Bedrock
+  const bedrockUrl = `${AI_GATEWAY_BASE}/aws-bedrock/bedrock-runtime.us-east-1.amazonaws.com/model/us.anthropic.claude-sonnet-4-5-v1:0/invoke`;
 
-    // Log response for monitoring
-    const statusCode = proxyRes.statusCode || 500;
-    if (statusCode >= 200 && statusCode < 300) {
-      stats.successes++;
-    } else {
-      stats.failures++;
-      console.warn(`⚠️  claude-lb returned ${statusCode}`);
-    }
-
-    // Forward response headers and body
-    res.writeHead(statusCode, proxyRes.headers);
-    proxyRes.pipe(res);
+  const bedrockHeaders = new Headers({
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${bedrockToken}`,
+    'anthropic-version': headers.get('anthropic-version') || '2023-06-01',
   });
 
-  proxyReq.on('error', (error) => {
-    stats.requests++;
-    stats.failures++;
-    stats.lastError = error.message;
-    console.error('❌ Proxy request error:', error.message);
+  console.log('🔵 Attempting Bedrock via AI Gateway...');
 
-    // If direct fallback is enabled, try direct Anthropic API
-    if (DIRECT_ANTHROPIC_FALLBACK && process.env.ANTHROPIC_API_KEY) {
-      console.log('🔄 Falling back to direct Anthropic API...');
-      forwardToDirectAnthropic(body, headers, res);
+  try {
+    const response = await fetch(bedrockUrl, {
+      method: 'POST',
+      headers: bedrockHeaders,
+      body
+    });
+
+    if (response.ok) {
+      console.log('✅ Bedrock request succeeded via AI Gateway');
     } else {
-      res.writeHead(500);
-      res.end(JSON.stringify({ error: 'Proxy Error', message: error.message }));
+      console.warn(`⚠️  Bedrock returned ${response.status}`);
     }
-  });
 
-  proxyReq.write(body);
-  proxyReq.end();
+    return response;
+  } catch (error) {
+    console.error('❌ Bedrock request error:', error);
+    throw error;
+  }
 }
 
 /**
- * Direct fallback to Anthropic API (bypass proxy)
+ * Forward request to Anthropic via AI Gateway
  */
-function forwardToDirectAnthropic(
-  body: string,
-  headers: Record<string, string | string[] | undefined>,
-  res: ServerResponse
-): void {
-  const options = {
-    hostname: 'api.anthropic.com',
-    port: 443,
-    path: '/v1/messages',
-    method: 'POST',
-    headers: {
-      ...headers,
-      host: 'api.anthropic.com',
-      'x-api-key': process.env.ANTHROPIC_API_KEY || '',
-      'anthropic-version': headers['anthropic-version'] || '2023-06-01',
-    },
-  };
+async function forwardToAnthropic(body: string, headers: Headers): Promise<Response> {
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if (!anthropicKey) {
+    console.error('❌ No Anthropic API key available');
+    return new Response(
+      JSON.stringify({ error: 'No API credentials available' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
 
-  const directReq = httpsRequest(options, (directRes) => {
-    res.writeHead(directRes.statusCode || 500, directRes.headers);
-    directRes.pipe(res);
+  // AI Gateway URL for Anthropic
+  const anthropicUrl = `${AI_GATEWAY_BASE}/anthropic/v1/messages`;
+
+  const anthropicHeaders = new Headers({
+    'Content-Type': 'application/json',
+    'x-api-key': anthropicKey,
+    'anthropic-version': headers.get('anthropic-version') || '2023-06-01',
   });
 
-  directReq.on('error', (error) => {
-    console.error('❌ Direct API error:', error.message);
-    res.writeHead(500);
-    res.end(JSON.stringify({ error: 'Direct API Error', message: error.message }));
-  });
+  console.log('🟢 Attempting Anthropic via AI Gateway...');
 
-  directReq.write(body);
-  directReq.end();
+  try {
+    const response = await fetch(anthropicUrl, {
+      method: 'POST',
+      headers: anthropicHeaders,
+      body
+    });
+
+    if (response.ok) {
+      console.log('✅ Anthropic request succeeded via AI Gateway');
+    } else {
+      console.error(`❌ Anthropic returned ${response.status}`);
+    }
+
+    return response;
+  } catch (error) {
+    console.error('❌ Anthropic request error:', error);
+    return new Response(
+      JSON.stringify({ error: 'Anthropic API Error', message: String(error) }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
 }
 
 export async function startProxyServer(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const mode = getProxyMode();
+  const mode = getProxyMode();
 
-    // Log proxy configuration
-    console.log('🔀 Proxy Mode:', mode);
-    if (mode === 'direct') {
-      console.log('⚠️  No proxy credentials - using direct Anthropic API');
-      console.log('   Set ANTHROPIC_API_KEY to enable monitoring via claude-lb');
-      // Still return the port but proxy won't be used
-      resolve(PROXY_PORT);
-      return;
-    }
+  // Log proxy configuration
+  console.log('🔀 Proxy Mode:', mode);
+  if (mode === 'direct') {
+    console.log('⚠️  No proxy credentials - using direct Anthropic API');
+    console.log('   Set ANTHROPIC_API_KEY to enable monitoring via AI Gateway');
+    // Still return the port but proxy won't be used
+    return PROXY_PORT;
+  }
 
-    const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-      // Special endpoint for health/stats (check this first!)
-      if (req.url === '/health') {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(stats));
-        return;
+  const server = Bun.serve({
+    port: PROXY_PORT,
+    hostname: '127.0.0.1',
+
+    async fetch(req: Request): Promise<Response> {
+      const url = new URL(req.url);
+
+      // Health check endpoint (check this first!)
+      if (url.pathname === '/health') {
+        return Response.json(stats);
       }
 
-      // Only proxy requests to /v1/messages
-      if (req.url !== '/v1/messages' || req.method !== 'POST') {
-        res.writeHead(404);
-        res.end('Not Found');
-        return;
+      // Only proxy /v1/messages
+      if (url.pathname !== '/v1/messages' || req.method !== 'POST') {
+        return new Response('Not Found', { status: 404 });
       }
 
-      // Collect request body
-      let body = '';
-      req.on('data', (chunk) => {
-        body += chunk.toString();
-      });
+      // Increment request count once at the start
+      stats.requests++;
 
-      req.on('end', () => {
-        // Convert headers to plain object
-        const headers: Record<string, string | string[] | undefined> = {};
-        if (req.headers) {
-          Object.entries(req.headers).forEach(([key, value]) => {
-            headers[key] = value;
-          });
+      const body = await req.text();
+
+      // Try Bedrock first if we have a token
+      if (process.env.AWS_BEARER_TOKEN_BEDROCK) {
+        try {
+          const bedrockResponse = await forwardToBedrock(body, req.headers);
+
+          // If successful, return immediately
+          if (bedrockResponse.ok) {
+            stats.successes++;
+            return bedrockResponse;
+          }
+
+          // If 429 rate limit, fall through to Anthropic
+          if (bedrockResponse.status === 429) {
+            console.log('⚠️  Bedrock rate limited (429) - failing over to Anthropic immediately');
+          } else {
+            // Other errors, return the error (don't failover for non-429 errors)
+            stats.failures++;
+            return bedrockResponse;
+          }
+        } catch (error) {
+          console.error('❌ Bedrock request threw error:', error);
+          // Fall through to Anthropic on any error
+        }
+      }
+
+      // Immediate failover to Anthropic API (zero delay!)
+      if (process.env.ANTHROPIC_API_KEY) {
+        console.log('🔄 Failing over to Anthropic (no delay)...');
+        const anthropicResponse = await forwardToAnthropic(body, req.headers);
+
+        if (anthropicResponse.ok) {
+          stats.successes++;
+        } else {
+          stats.failures++;
         }
 
-        forwardToClaudeLB(body, headers, res);
-      });
-    });
-
-    server.on('error', (error) => {
-      console.error('❌ Proxy server error:', error.message);
-      reject(error);
-    });
-
-    server.listen(PROXY_PORT, '127.0.0.1', () => {
-      console.log(`✅ Proxy server listening on http://127.0.0.1:${PROXY_PORT}`);
-      console.log(`   Forwarding to https://${TARGET_HOST}`);
-      console.log(`   Mode: ${mode}`);
-      if (mode === 'bedrock-anthropic') {
-        console.log('   🔒 Bedrock-first with Anthropic failover (full proxy mode)');
-      } else if (mode === 'anthropic-only') {
-        console.log('   🔒 Anthropic-only mode (monitoring + observability)');
+        return anthropicResponse;
       }
-      console.log(`   📊 Health endpoint: http://127.0.0.1:${PROXY_PORT}/health`);
-      resolve(PROXY_PORT);
-    });
+
+      stats.failures++;
+      return new Response(
+        JSON.stringify({ error: 'Both Bedrock and Anthropic failed' }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
   });
+
+  console.log(`✅ Proxy server listening on http://127.0.0.1:${server.port}`);
+  console.log(`   Forwarding to Cloudflare AI Gateway (${AI_GATEWAY_BASE})`);
+  console.log(`   Mode: ${mode}`);
+  if (mode === 'bedrock-anthropic') {
+    console.log('   🔒 Bedrock-first with Anthropic failover via AI Gateway');
+  } else if (mode === 'anthropic-only') {
+    console.log('   🔒 Anthropic-only mode via AI Gateway (monitoring + observability)');
+  }
+  console.log(`   📊 Health endpoint: http://127.0.0.1:${server.port}/health`);
+
+  return server.port;
 }
 
 export function getProxyUrl(): string {
